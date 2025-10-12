@@ -18,8 +18,13 @@ st.set_page_config(page_title="🌾 Crop Advisor", layout="wide")
 # INITIAL SETUP
 # =========================
 def load_env_vars():
-    load_dotenv()
-    return os.getenv("WEATHER_API_KEY"), os.getenv("GROQ_API_KEY")
+    # load from .streamlit/secrets.toml
+    groq_api_key = st.secrets.api_keys.GROQ_API_KEY
+    weather_api_key = st.secrets.api_keys.WEATHER_API_KEY
+    return weather_api_key, groq_api_key
+
+    # load_dotenv()
+    # return os.getenv("WEATHER_API_KEY"), os.getenv("GROQ_API_KEY")
 
 
 def init_groq_conversation(groq_api_key: str):
