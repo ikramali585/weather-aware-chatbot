@@ -4,8 +4,8 @@ import requests
 import warnings
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
+from langchain_classic.chains import ConversationChain
+from langchain_classic.memory import ConversationBufferMemory
 
 
 # =========================
