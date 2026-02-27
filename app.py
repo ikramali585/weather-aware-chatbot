@@ -11,20 +11,40 @@ from langchain_classic.memory import ConversationBufferMemory
 # =========================
 # PAGE CONFIG
 # =========================
-st.set_page_config(page_title="🌾 Crop Advisor", layout="wide")
+st.set_page_config(page_title="Crop Advisor", layout="wide")
 
 
 # =========================
 # INITIAL SETUP
 # =========================
 def load_env_vars():
-    # load from .streamlit/secrets.toml
-    groq_api_key = st.secrets.api_keys.GROQ_API_KEY
-    weather_api_key = st.secrets.api_keys.WEATHER_API_KEY
-    return weather_api_key, groq_api_key
+    load_dotenv()
 
-    # load_dotenv()
-    # return os.getenv("WEATHER_API_KEY"), os.getenv("GROQ_API_KEY")
+    secrets_dict = {}
+    api_keys = {}
+    try:
+        # Accessing st.secrets directly can raise if secrets.toml is missing.
+        secrets_dict = dict(st.secrets)
+        maybe_api_keys = secrets_dict.get("api_keys", {})
+        if isinstance(maybe_api_keys, dict):
+            api_keys = maybe_api_keys
+    except Exception:
+        # No Streamlit secrets file configured; fall back to .env.
+        pass
+
+    # Prefer Streamlit secrets (nested or flat), then fall back to .env.
+    groq_api_key = (
+        api_keys.get("GROQ_API_KEY")
+        or secrets_dict.get("GROQ_API_KEY")
+        or os.getenv("GROQ_API_KEY")
+    )
+    weather_api_key = (
+        api_keys.get("WEATHER_API_KEY")
+        or secrets_dict.get("WEATHER_API_KEY")
+        or os.getenv("WEATHER_API_KEY")
+    )
+
+    return weather_api_key, groq_api_key
 
 
 def init_groq_conversation(groq_api_key: str):
@@ -69,11 +89,19 @@ def filter_data(data):
 def check_weather_forecast(city, api_key):
     ndays = 40
     url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&cnt={ndays}&appid={api_key}"
-    response = requests.get(url)
-    if response.status_code != 200 or response.json().get("cod") == "404":
-        return None, "City not found"
+    try:
+        response = requests.get(url, timeout=15)
+        data = response.json()
+    except requests.RequestException:
+        return None, "Weather service is unreachable. Please try again."
+    except ValueError:
+        return None, "Weather service returned an invalid response."
 
-    data = response.json()
+    if response.status_code != 200:
+        return None, data.get("message", "Unable to fetch weather forecast.")
+    if not isinstance(data.get("list"), list):
+        return None, "Unexpected forecast data format."
+
     filtered_data = filter_data(data)
 
     rain_threshold = 1.6
@@ -103,7 +131,136 @@ def check_weather_forecast(city, api_key):
 # MAIN APP LAYOUT
 # =========================
 def main():
-    st.title("🌦️ Weather-aware Crop Advisor")
+    st.markdown(
+        '<h1><i class="fa-solid fa-cloud-sun" style="margin-right:0.38rem;"></i>Weather-aware Crop Advisor</h1>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+        <style>
+        .stApp {
+            background: #f6f8f4;
+        }
+        .block-container {
+            margin-top: 50px !important;
+            padding-top: 1.3rem !important;
+            padding-bottom: 1.4rem !important;
+            padding-left: 1.2rem !important;
+            padding-right: 1.2rem !important;
+            max-width: 1200px;
+        }
+        .stApp h1 {
+            margin-top: 20px !important;
+            margin-bottom: 0.85rem !important;
+            background: linear-gradient(90deg, #1f5f33 0%, #2f8f47 52%, #53b86a 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        [data-testid="stVerticalBlock"] > [style*="flex-direction: column;"] > [data-testid="stVerticalBlock"] {
+            gap: 0.5rem;
+        }
+        div[data-testid="stTextInput"] > div > div > input {
+            border-radius: 12px;
+            border: 1px solid #cfdcc5;
+            background: #ffffff;
+            padding: 0.52rem 0.7rem;
+            transition: outline-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        /* Streamlit/BaseWeb wrappers can add default focus ring; normalize and unify */
+        div[data-testid="stTextInput"] div[data-baseweb="input"] {
+            border-radius: 12px !important;
+            border-color: #cfdcc5 !important;
+            box-shadow: none !important;
+        }
+        div[data-testid="stChatInput"] {
+            margin-top: 0.45rem;
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        div[data-testid="stChatInput"] > div {
+            border: 1px solid #d2dfc8 !important;
+            box-shadow: none !important;
+            outline: none !important;
+            border-radius: 12px !important;
+        }
+        div[data-testid="stChatInput"] > div:focus-within {
+            border: 1px solid #d2dfc8 !important;
+            box-shadow: none !important;
+            outline: 2px solid #2f6f3e !important;
+            outline-offset: 1px !important;
+            border-radius: 12px !important;
+        }
+        div[data-testid="stChatInput"] div[data-baseweb="textarea"] {
+            border-radius: 12px !important;
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+            transition: outline-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        div[data-testid="stChatInput"] textarea {
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+            background: transparent !important;
+        }
+        div[data-testid="stChatInput"] button {
+            background: #2f6f3e !important;
+            border: 1px solid #265c33 !important;
+            color: #ffffff !important;
+        }
+        div[data-testid="stChatInput"] button:hover {
+            background: #265c33 !important;
+        }
+        div[data-testid="stChatInput"] button svg {
+            fill: #ffffff !important;
+            stroke: #ffffff !important;
+        }
+        div[data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
+            border-color: #cfdcc5 !important;
+            box-shadow: none !important;
+            outline: 2px solid #2f6f3e !important;
+            outline-offset: 1px !important;
+        }
+        div[data-testid="stChatInput"] div[data-baseweb="textarea"]:focus-within {
+            border: none !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+        div[data-testid="stTextInput"] > div > div > input:focus,
+        div[data-testid="stTextInput"] > div > div > input:focus-visible,
+        div[data-testid="stButton"] > button:focus,
+        div[data-testid="stButton"] > button:focus-visible {
+            border-color: #cfdcc5 !important;
+            box-shadow: none !important;
+            outline: 2px solid #2f6f3e !important;
+            outline-offset: 1px !important;
+        }
+        div[data-testid="stButton"] > button {
+            border-radius: 12px;
+            border: none;
+            background: #2f6f3e;
+            color: white;
+            font-weight: 600;
+            padding: 0.52rem 1rem;
+            transition: background 0.15s ease, outline-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        div[data-testid="stButton"] > button:hover {
+            background: #265c33;
+        }
+        .wx-icon {
+            color: #4f6647;
+            margin-right: 0.35rem;
+            width: 16px;
+            text-align: center;
+            display: inline-block;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     weather_api_key, groq_api_key = load_env_vars()
     if "conversation" not in st.session_state:
@@ -121,24 +278,62 @@ def main():
 
     # -------- LEFT COLUMN: Inputs --------
     with col1:
-        st.subheader("🧩 Input Information")
+        st.markdown("""
+        <div style="background: #f4f9f1;
+                    border: 1px solid #dcead4;
+                    border-radius: 14px;
+                    padding: 0.85rem 0.95rem;
+                    margin: 0 0 0.7rem 0;">
+            <h3 style="margin: 0; color: #000; font-size: 1.3rem;"><i class="fa-solid fa-sliders" style="margin-right:0.34rem;"></i>Input Information</h3>
+            <p style="margin: 0.28rem 0 0 0; color: #56704f; font-size: 0.88rem;">
+                Enter crop and city to get your weather-aware recommendation.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
         crop = st.text_input("Enter your crop name:")
         city = st.text_input("Enter your city:")
         get_reco = st.button("Get Initial Recommendation")
         
         # Display weather data if available
         if st.session_state.weather_data:
-            st.subheader("🌤️ Current Weather Data")
+            st.markdown("""
+            <div style="background: #f4f9f1;
+                        border: 1px solid #dcead4;
+                        border-radius: 14px;
+                        padding: 0.8rem 0.95rem;
+                        margin: 0.2rem 0 0.7rem 0;">
+                <h3 style="margin: 0; color: #000; font-size: 1.3rem;"><i class="fa-solid fa-cloud-sun" style="margin-right:0.34rem;"></i>Current Weather Data</h3>
+            </div>
+            """, unsafe_allow_html=True)
             weather_info = st.session_state.weather_data
-            
-            st.success(f"Weather in {st.session_state.current_city}: {weather_info['condition']} ({weather_info['description']})")
-            st.info(f"🌡️ Temperature: {weather_info['temp_c']}°C ({weather_info['temp_f']}°F)")
-            st.info(f"💧 Humidity: {weather_info['humidity']}% | 🌬️ Wind: {weather_info['wind_speed']} m/s")
-            st.info(f"📊 Pressure: {weather_info['pressure']} hPa | 👁️ Visibility: {weather_info['visibility']}m")
-            
+            forecast_line = ""
             if weather_info.get('forecast_avg_temp') != 'N/A':
-                st.info(f"📈 24h Forecast: Avg Temp: {weather_info['forecast_avg_temp']}°C | Avg Humidity: {weather_info['forecast_avg_humidity']}% | Rain: {weather_info['forecast_rain']}mm")
+                forecast_line = f'<i class="fa-solid fa-chart-line wx-icon"></i><strong>24h Forecast:</strong> Avg Temp: {weather_info["forecast_avg_temp"]}°C &nbsp;|&nbsp; Avg Humidity: {weather_info["forecast_avg_humidity"]}% &nbsp;|&nbsp; Rain: {weather_info["forecast_rain"]}mm'
+            forecast_line_block = f'<div style="margin-top: 0.34rem;">{forecast_line}</div>' if forecast_line else ""
 
+            st.markdown(f"""
+            <div style="background: linear-gradient(180deg, #f8fcf6 0%, #f1f8ed 100%);
+                        border: 1px solid #d8e7cf;
+                        border-radius: 14px;
+                        padding: 0.9rem 1rem;
+                        margin: 0.35rem 0 0.5rem 0;
+                        color: #2e4829;
+                        font-size: 0.92rem;
+                        line-height: 1.55;
+                        box-shadow: 0 3px 10px rgba(37, 73, 31, 0.06);">
+                <div style="display: flex; align-items: center; gap: 0.42rem; margin-bottom: 0.28rem;">
+                    <i class="fa-solid fa-cloud-sun wx-icon" style="font-size: 0.85rem;"></i>
+                    <div style="font-weight: 700; font-size:20px">Weather in {st.session_state.current_city}</div>
+                </div>
+                <div style="margin-bottom: 0.45rem; color: #4f6647;">{weather_info['condition']} ({weather_info['description']})</div>
+                <div style="background: #ffffff; border: 1px solid #e3eedf; border-radius: 10px; padding: 0.58rem 0.7rem;">
+                    <div style="margin-bottom: 0.3rem;"><i class="fa-solid fa-temperature-three-quarters wx-icon"></i><strong>Temperature:</strong> {weather_info['temp_c']}°C ({weather_info['temp_f']}°F)</div>
+                    <div style="margin-bottom: 0.3rem;"><i class="fa-solid fa-droplet wx-icon"></i><strong>Humidity:</strong> {weather_info['humidity']}% &nbsp;|&nbsp; <i class="fa-solid fa-wind wx-icon"></i><strong>Wind:</strong> {weather_info['wind_speed']} m/s</div>
+                    <div style="margin-bottom: 0.3rem;"><i class="fa-solid fa-gauge-high wx-icon"></i><strong>Pressure:</strong> {weather_info['pressure']} hPa &nbsp;|&nbsp; <i class="fa-solid fa-eye wx-icon"></i><strong>Visibility:</strong> {weather_info['visibility']}m</div>
+                    {forecast_line_block}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         if get_reco:
             if not weather_api_key:
                 st.error("Please set your Weather API key in .env file.")
@@ -149,12 +344,30 @@ def main():
                 return
 
             # Fetch current weather
-            weather_data = requests.get(
-                f"https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&APPID={weather_api_key}"
-            ).json()
+            try:
+                current_resp = requests.get(
+                    f"https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&APPID={weather_api_key}",
+                    timeout=15,
+                )
+                weather_data = current_resp.json()
+            except requests.RequestException:
+                st.error("Weather service is unreachable. Please try again.")
+                return
+            except ValueError:
+                st.error("Weather service returned an invalid response.")
+                return
 
-            if weather_data.get("cod") == "404":
-                st.error("City not found!")
+            if current_resp.status_code != 200:
+                st.error(weather_data.get("message", "Unable to fetch current weather data."))
+                return
+
+            if (
+                not isinstance(weather_data.get("weather"), list)
+                or not weather_data["weather"]
+                or "main" not in weather_data
+                or "wind" not in weather_data
+            ):
+                st.error("Unexpected current weather data format.")
                 return
 
             # Extract comprehensive weather data
@@ -171,21 +384,40 @@ def main():
             uv_index = weather_data.get("uv", "N/A")
             
             # Get 5-day forecast for better analysis
-            forecast_data = requests.get(
-                f"https://api.openweathermap.org/data/2.5/forecast?q={city}&units=metric&APPID={weather_api_key}"
-            ).json()
+            forecast_resp = None
+            try:
+                forecast_resp = requests.get(
+                    f"https://api.openweathermap.org/data/2.5/forecast?q={city}&units=metric&APPID={weather_api_key}",
+                    timeout=15,
+                )
+                forecast_data = forecast_resp.json()
+            except requests.RequestException:
+                forecast_data = {}
+            except ValueError:
+                forecast_data = {}
             
             # Initialize forecast variables
             avg_temp = "N/A"
             avg_humidity = "N/A"
             total_rain = "N/A"
             
-            if forecast_data.get("cod") == "200":
+            if (
+                forecast_resp is not None
+                and forecast_resp.status_code == 200
+                and isinstance(forecast_data.get("list"), list)
+            ):
                 # Analyze forecast trends
                 forecast_list = forecast_data["list"][:8]  # Next 24 hours (8 x 3-hour intervals)
-                avg_temp = round(sum(item["main"]["temp"] for item in forecast_list) / len(forecast_list))
-                avg_humidity = round(sum(item["main"]["humidity"] for item in forecast_list) / len(forecast_list))
-                total_rain = sum(item.get("rain", {}).get("3h", 0) for item in forecast_list)
+                if forecast_list:
+                    valid_main = [item["main"] for item in forecast_list if "main" in item]
+                    if valid_main:
+                        avg_temp = round(
+                            sum(item["temp"] for item in valid_main) / len(valid_main)
+                        )
+                        avg_humidity = round(
+                            sum(item["humidity"] for item in valid_main) / len(valid_main)
+                        )
+                    total_rain = sum(item.get("rain", {}).get("3h", 0) for item in forecast_list)
             
             # Store weather data in session state
             st.session_state.weather_data = {
@@ -211,7 +443,7 @@ def main():
             if error:
                 st.error(error)
             else:
-                st.write("🌧️ **Worst Weather Days:**")
+                st.markdown('<p><i class="fa-solid fa-cloud-showers-heavy" style="margin-right:0.35rem;"></i><strong>Worst Weather Days:</strong></p>', unsafe_allow_html=True)
                 if worst_days:
                     for d in worst_days:
                         st.write(f"- {d}")
@@ -257,13 +489,14 @@ def main():
             
             # Enhanced success message
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); 
-                        padding: 1rem; 
-                        border-radius: 10px; 
+            <div style="background: #edf4e8;
+                        border: 1px solid #d1dfc7;
+                        padding: 0.9rem 1rem;
+                        border-radius: 12px;
                         text-align: center;
-                        margin: 1rem 0;">
-                <p style="color: #2d5016; margin: 0; font-weight: 600; font-size: 1rem;">
-                    ✅ Recommendation added to chatbot panel →
+                        margin: 0.75rem 0 0.9rem 0;">
+                <p style="color: #244723; margin: 0; font-weight: 650; font-size: 0.98rem;">
+                    <i class="fa-solid fa-circle-check" style="margin-right:0.35rem;"></i>Recommendation added to chatbot panel →
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -276,15 +509,15 @@ def main():
     with col2:
         # Enhanced chat header with attractive styling
         st.markdown("""
-        <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                    padding: 1rem; 
-                    border-radius: 10px; 
-                    margin-bottom: 1rem;
+        <div style="background: #2f6f3e;
+                    padding: 0.9rem 1rem;
+                    border-radius: 14px;
+                    margin-bottom: 0.9rem;
                     text-align: center;">
-            <h3 style="color: white; margin: 0; font-size: 1.2rem;">
-                🌱🤖 AI Crop Assistant
+            <h3 style="color: #f6faef; margin: 0; font-size: 1.2rem;">
+                <i class="fa-solid fa-seedling" style="margin-right:0.35rem;"></i>AI Crop Assistant
             </h3>
-            <p style="color: #e0e0e0; margin: 0.5rem 0 0 0; font-size: 0.9rem;">
+            <p style="color: #e6f0dc; margin: 0.3rem 0 0 0; font-size: 0.9rem;">
                 Your intelligent farming companion
             </p>
         </div>
@@ -292,7 +525,7 @@ def main():
 
         # Chat messages container with enhanced styling
         if st.session_state.chat_history:
-            st.markdown("### 💭 Conversation History")
+            st.markdown('<h3 style="margin: 0.2rem 0 0.6rem 0; color: #000; font-size: 1.3rem;"><i class="fa-solid fa-comments" style="margin-right:0.35rem;"></i>Conversation History</h3>', unsafe_allow_html=True)
             
             # Create a scrollable container for chat messages
             chat_container = st.container()
@@ -303,17 +536,18 @@ def main():
                         first_line = message.split('\n')[0].strip()
                         # Enhanced user message styling
                         st.markdown(f"""
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                                    padding: 0.8rem; 
-                                    border-radius: 15px 15px 5px 15px; 
-                                    margin: 0.5rem 0; 
+                        <div style="background: #2f6f3e;
+                                    border: 1px solid #3a7d4b;
+                                    padding: 0.8rem 0.9rem;
+                                    border-radius: 14px 14px 6px 14px;
+                                    margin: 0.5rem 0;
                                     color: white;
-                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div style="display: flex; align-items: center; margin-bottom: 0.3rem;">
-                                <span style="font-size: 1.2rem; margin-right: 0.5rem;">👤</span>
+                                    box-shadow: none;">
+                            <div style="display: flex; align-items: center; margin-bottom: 0.28rem;">
+                                <i class="fa-solid fa-user" style="font-size: 0.9rem; margin-right: 0.45rem;"></i>
                                 <strong>You asked:</strong>
                             </div>
-                            <div style="font-size: 0.95rem;">
+                            <div style="font-size: 0.93rem;">
                                 {first_line}
                             </div>
                         </div>
@@ -321,17 +555,18 @@ def main():
                     else:
                         # Enhanced assistant message styling
                         st.markdown(f"""
-                        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                                    padding: 0.8rem; 
-                                    border-radius: 15px 15px 15px 5px; 
-                                    margin: 0.5rem 0; 
-                                    color: white;
-                                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                            <div style="display: flex; align-items: center; margin-bottom: 0.3rem;">
-                                <span style="font-size: 1.2rem; margin-right: 0.5rem;">🌾</span>
-                                <strong>AI Assistant replied:</strong>
+                        <div style="background: #f7fbf5;
+                                    border: 1px solid #e6efe2;
+                                    padding: 1rem 1.05rem;
+                                    border-radius: 16px 16px 16px 8px;
+                                    margin: 0.6rem 0;
+                                    color: #263424;
+                                    box-shadow: 0 6px 18px rgba(39, 71, 33, 0.10);">
+                            <div style="display: flex; align-items: center; margin-bottom: 0.45rem;">
+                                <span style="font-size: 1rem; margin-right: 0.5rem; width: 1.55rem; height: 1.55rem; border-radius: 50%; background: #eaf5e3; border: 1px solid #d0e3c6; display: inline-flex; align-items: center; justify-content: center;"><i class="fa-solid fa-robot" style="font-size: 0.78rem; color: #3c5a35;"></i></span>
+                                <strong style="font-size: 0.78rem; color: #30502a; letter-spacing: 0.6px; text-transform: uppercase; background: #ecf7e6; border: 1px solid #d0e4c3; border-radius: 999px; padding: 0.2rem 0.55rem;">AI Assistant</strong>
                             </div>
-                            <div style="font-size: 0.95rem; line-height: 1.4;">
+                            <div style="font-size: 0.97rem; line-height: 1.6;">
                                 {message}
                             </div>
                         </div>
@@ -339,13 +574,14 @@ def main():
         else:
             # Welcome message when no chat history
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
-                        padding: 2rem; 
-                        border-radius: 15px; 
+            <div style="background: #eef5e8;
+                        border: 1px solid #d2dfc8;
+                        padding: 1.3rem;
+                        border-radius: 14px;
                         text-align: center;
-                        margin: 1rem 0;">
-                <h4 style="color: #333; margin: 0 0 1rem 0;">🌱 Welcome to AI Crop Assistant!</h4>
-                <p style="color: #666; margin: 0; font-size: 0.95rem;">
+                        margin: 0.75rem 0;">
+                <h3 style="color: #000; margin: 0 0 0.9rem 0;"><i class="fa-solid fa-seedling" style="margin-right:0.35rem;"></i>Welcome to AI Crop Assistant!</h3>
+                <p style="color: #4f6148; margin: 0; font-size: 0.95rem;">
                     Get personalized crop recommendations based on your location and weather conditions.
                     Start by getting your initial recommendation on the left!
                 </p>
@@ -358,13 +594,14 @@ def main():
         if not st.session_state.get("initial_reco_done", False):
             # Disabled state with attractive styling
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); 
-                        padding: 1rem; 
-                        border-radius: 10px; 
+            <div style="background: #f6f2e8;
+                        border: 1px solid #e3dbc9;
+                        padding: 0.9rem;
+                        border-radius: 12px;
                         text-align: center;
-                        margin: 1rem 0;">
-                <p style="color: #8b4513; margin: 0; font-weight: 500;">
-                    🔒 Chat is locked - Get your initial recommendation first!
+                        margin: 0.75rem 0;">
+                <p style="color: #6b5530; margin: 0; font-weight: 600;">
+                    <i class="fa-solid fa-lock" style="margin-right:0.35rem;"></i>Chat is locked - Get your initial recommendation first!
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -372,13 +609,14 @@ def main():
         else:
             # Active chat input with enhanced styling
             st.markdown("""
-            <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); 
-                        padding: 0.8rem; 
-                        border-radius: 10px; 
+            <div style="background: #eef5e8;
+                        border: 1px solid #d2dfc8;
+                        padding: 0.82rem;
+                        border-radius: 12px;
                         text-align: center;
                         margin-bottom: 0.5rem;">
-                <p style="color: #333; margin: 0; font-weight: 500;">
-                    💬 Ready to chat! Ask me anything about your crops
+                <p style="color: #2f4d2a; margin: 0; font-weight: 600;">
+                    <i class="fa-solid fa-comment-dots" style="margin-right:0.35rem;"></i>Ready to chat! Ask me anything about your crops
                 </p>
             </div>
             """, unsafe_allow_html=True)
@@ -395,3 +633,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
