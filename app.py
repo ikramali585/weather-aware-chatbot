@@ -18,32 +18,26 @@ st.set_page_config(page_title="Crop Advisor", layout="wide")
 # INITIAL SETUP
 # =========================
 def load_env_vars():
-    load_dotenv()
-
-    secrets_dict = {}
-    api_keys = {}
     try:
-        # Accessing st.secrets directly can raise if secrets.toml is missing.
-        secrets_dict = dict(st.secrets)
-        maybe_api_keys = secrets_dict.get("api_keys", {})
-        if isinstance(maybe_api_keys, dict):
-            api_keys = maybe_api_keys
+        load_dotenv()  # Load .env variables first
+    except Exception as e:
+        st.warning(f"Could not load .env file: {e}")
+    
+    try:
+        groq_api_key = st.secrets.api_keys.GROQ_API_KEY 
     except Exception:
-        # No Streamlit secrets file configured; fall back to .env.
-        pass
-
-    # Prefer Streamlit secrets (nested or flat), then fall back to .env.
-    groq_api_key = (
-        api_keys.get("GROQ_API_KEY")
-        or secrets_dict.get("GROQ_API_KEY")
-        or os.getenv("GROQ_API_KEY")
-    )
-    weather_api_key = (
-        api_keys.get("WEATHER_API_KEY")
-        or secrets_dict.get("WEATHER_API_KEY")
-        or os.getenv("WEATHER_API_KEY")
-    )
-
+        groq_api_key = os.getenv("GROQ_API_KEY")
+    
+    try:
+        weather_api_key = st.secrets.api_keys.WEATHER_API_KEY 
+    except Exception:
+        weather_api_key = os.getenv("WEATHER_API_KEY")
+    
+    if not groq_api_key:
+        st.error("GROQ_API_KEY not found. Please set it in .env or Streamlit secrets.")
+    if not weather_api_key:
+        st.error("WEATHER_API_KEY not found. Please set it in .env or Streamlit secrets.")
+    
     return weather_api_key, groq_api_key
 
 
@@ -484,7 +478,7 @@ def main():
             response = call_conversation(st.session_state.conversation, query)
             reply = response["response"] if isinstance(response, dict) else response
 
-            st.session_state.chat_history.append(("User", query))
+            st.session_state.chat_history.append(("User", "recommendations for my crops"))
             st.session_state.chat_history.append(("Assistant", reply))
             
             # Enhanced success message
